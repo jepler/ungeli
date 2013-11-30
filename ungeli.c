@@ -88,10 +88,14 @@ set_mkey(const char *arg) {
 }
 
 static void
+perror_fatal(const char *s) __attribute__((noreturn));
+static void
 perror_fatal(const char *s) {
     perror(s); abort();
 }
 
+static void
+fatal(const char *s) __attribute__((noreturn));
 static void
 fatal(const char *s) {
     fprintf(stderr, "%s\n", s); abort();
