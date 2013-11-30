@@ -40,6 +40,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <errno.h>
 
 #define IVSIZE (16)
 #define SHA512_MDLEN (SHA512_DIGEST_LENGTH)
@@ -136,6 +137,8 @@ static void
 read_full(int fd, unsigned char *blk, int blocksize) {
     do {
         int res = read(fd, blk, blocksize);
+        if(res == 0) fatal("read_full read() -> 0");
+        if(res < 0 && errno == EAGAIN) continue;
         if(res < 0) perror_fatal("read_full");
         blk += res;
         blocksize -= res;
@@ -146,6 +149,8 @@ static void
 write_full(int fd, const unsigned char *blk, int blocksize) {
     do {
         int res = write(fd, blk, blocksize);
+        if(res == 0) fatal("write_full write() -> 0");
+        if(res < 0 && errno == EAGAIN) continue;
         if(res < 0) perror_fatal("write_full");
         blk += res;
         blocksize -= res;
