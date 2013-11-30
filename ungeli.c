@@ -136,7 +136,7 @@ static void
 read_full(int fd, unsigned char *blk, int blocksize) {
     do {
         int res = read(fd, blk, blocksize);
-        if(res < 0) perror_fatal("write_full");
+        if(res < 0) perror_fatal("read_full");
         blk += res;
         blocksize -= res;
     } while(blocksize);
