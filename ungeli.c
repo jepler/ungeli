@@ -162,15 +162,6 @@ typedef struct {
     unsigned char k_opad[128];
 } eli_crypto_ctx;
 
-#if 0
-static void SHA512(unsigned char *dest, unsigned char *src, size_t size) {
-    SHA512_CTX ctx;
-    SHA512_Init(&c);
-    SHA512_Update(&c, src, size);
-    SHA512_Final(dest, &c);
-}
-#endif
-
 static void xorbuf(unsigned char *dest, const unsigned char *src, 
         unsigned char xor, size_t n) {
     for(size_t i=0; i<n; i++) {
