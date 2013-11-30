@@ -247,6 +247,27 @@ void test_eli_crypto_hmac() {
     }
 }
 
+void eli_decrypt_range(int ifd, unsigned char *ob, uint64_t byteoffset, uint64_t count)
+{
+    unsigned char bkey[ELI_MAXKEYLEN];
+    eli_key_fill(mkey, (byteoffset >> ELI_KEY_SHIFT)/ blocksize, bkey);
+
+    unsigned char biv[IVSIZE];
+    xtr_ivgen(biv, byteoffset);
+
+    unsigned char ib[count];
+    read_full(ifd, ib, count);
+
+    EVP_CIPHER_CTX ctx;
+    EVP_CIPHER_CTX_init(&ctx);
+    EVP_DecryptInit_ex(&ctx, EVP_aes_128_xts(), NULL, bkey, biv);
+    int out_len, final_out_len;
+    EVP_DecryptUpdate(&ctx, ob, &out_len, ib, count);
+    EVP_DecryptFinal_ex(&ctx, ob+out_len, &final_out_len);
+    EVP_CIPHER_CTX_cleanup(&ctx);
+    if((out_len + final_out_len) != count) fatal("EVP final_out_len");
+}
+
 int main(int argc, char **argv) {
     test_eli_crypto_hmac();
 
@@ -278,28 +299,13 @@ int main(int argc, char **argv) {
     
     for(unsigned long long i=0; i<nblocks; i++)
     {
+        unsigned char ob[blocksize];
+
         uint64_t blockoffset = offset + i;
         uint64_t byteoffset = blockoffset * blocksize;
-        unsigned char bkey[ELI_MAXKEYLEN];
-        eli_key_fill(mkey, (byteoffset >> ELI_KEY_SHIFT) / blocksize, bkey);
 
-        unsigned char biv[IVSIZE];
-        xtr_ivgen(biv, byteoffset);
-        
-        unsigned char ib[blocksize];
-        read_full(ifd, ib, blocksize);
+        eli_decrypt_range(ifd, ob, byteoffset, blocksize);
 
-        EVP_CIPHER_CTX ctx;
-        EVP_CIPHER_CTX_init(&ctx);
-        EVP_DecryptInit_ex(&ctx, EVP_aes_128_xts(), NULL, bkey, biv);
-        unsigned char ob[blocksize];
-        int out_len, final_out_len;
-        EVP_DecryptUpdate(&ctx, ob, &out_len, ib, blocksize);
-        EVP_DecryptFinal_ex(&ctx, ob+out_len, &final_out_len);
-        EVP_CIPHER_CTX_cleanup(&ctx);
-        fprintf(stderr, "out_len=%d final_out_len=%d\n", out_len, final_out_len);
-        if((out_len + final_out_len) != blocksize) fatal("EVP final_out_len");
-        
         write_full(ofd, ob, blocksize);
     }
     return 0;
