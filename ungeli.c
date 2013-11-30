@@ -102,6 +102,18 @@ fatal(const char *s) {
 }
 
 static void
+fatalf(const char *fmt, ...) __attribute__((noreturn));
+static void
+fatalf(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+    abort();
+}
+
+static void
 putle64(unsigned char *buf, uint64_t arg)
 {
     *buf++ = (arg      ) & 0xff;
