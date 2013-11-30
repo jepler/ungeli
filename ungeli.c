@@ -41,6 +41,17 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
+#ifdef __linux__
+#include <sys/ioctl.h>
+#include <linux/nbd.h>
+#include <linux/fs.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#ifndef NBD_CMD_MASK_COMMAND
+#define NBD_CMD_MASK_COMMAND 0x0000ffff
+#endif
+#endif
 
 #define IVSIZE (16)
 #define SHA512_MDLEN (SHA512_DIGEST_LENGTH)
@@ -268,6 +279,137 @@ void eli_decrypt_range(int ifd, unsigned char *ob, uint64_t byteoffset, uint64_t
     if((out_len + final_out_len) != count) fatal("EVP final_out_len");
 }
 
+#ifdef __linux__
+static uint64_t ntohll(uint64_t v) {
+    if(ntohl(1) == 1) return v;
+    uint32_t lo = v & 0xffffffff, hi = v >> 32;
+    return ((uint64_t)ntohl(lo)) << 32 | ntohl(hi);
+}
+
+uint64_t filesize(int fd) {
+    off_t result = lseek(fd, (off_t)0, SEEK_END);
+    if(result < (off_t)0) perror_fatal("lseek(SEEK_END)");
+    return (uint64_t)result;
+}
+
+#define BUFSIZE ((1024*1024)+sizeof(struct nbd_reply))
+
+void eli_decrypt_range_ex(int ifd, unsigned char *buf, uint64_t offset,
+        size_t sz, int blocksize) {
+    if(offset % blocksize) {
+        fatal("Offset not multiple of blocksize");
+    }
+    if(sz % blocksize) {
+        fatal("Request length not multiple of blocksize");
+    }
+
+    while(sz) {
+        lseek(ifd, offset, 0);
+        eli_decrypt_range(ifd, buf, offset, blocksize);
+        sz -= blocksize;
+        buf += blocksize;
+        offset += blocksize;
+    }
+}
+
+void serve_nbd(int sock, int ifd, int blocksize) {
+    struct nbd_request request;
+    struct nbd_reply reply;
+    unsigned char buf[BUFSIZE];
+
+    reply.magic = htonl(NBD_REPLY_MAGIC);
+    reply.error = 0;
+
+    while(1) {
+        read_full(sock, (unsigned char*)&request, sizeof(request));
+        if(request.magic != htonl(NBD_REQUEST_MAGIC))
+            fatal("bad request.magic");
+
+        request.from = ntohll(request.from);
+        request.type = ntohl(request.type);
+        size_t len = ntohl(request.len);
+        long command = request.type & NBD_CMD_MASK_COMMAND;
+
+        if(command == NBD_CMD_DISC) break;
+        if(command != NBD_CMD_READ)
+            fatalf("Un-handled request %d", command);
+
+        memcpy(reply.handle, request.handle, sizeof(reply.handle));
+        fprintf(stderr, "read %zd @ %lld\n", len, request.from);
+        write_full(sock, (unsigned char*)&reply, sizeof(reply));
+        size_t currlen = len;
+        if(currlen > BUFSIZE - sizeof(struct nbd_reply))
+            len = BUFSIZE - sizeof(struct nbd_reply);
+        while(len > 0) {
+            eli_decrypt_range_ex(ifd, buf, request.from, currlen, blocksize);
+            write_full(sock, buf, currlen);
+            len -= currlen;
+            currlen = (len < BUFSIZE) ? len : BUFSIZE;
+        }
+    }
+}
+
+int setup_nbd(int ifd, int ofd, int blocksize) {
+    if(ioctl(ofd, NBD_SET_SIZE, (unsigned long)blocksize) < 0)
+        perror_fatal("ioctl NBD_SET_SIZE");
+    uint64_t wholesize = filesize(ifd);
+    uint64_t n4kblocks = (wholesize - 512) / 4096ULL;
+    if(n4kblocks != (uint64_t)(unsigned long)n4kblocks) {
+        fatal("Device too large");
+    }
+    if(ioctl(ofd, NBD_SET_BLKSIZE, 4096UL) < 0)
+        perror_fatal("ioctl NBD_SET_BLKSIZE");
+    if(ioctl(ofd, NBD_SET_SIZE_BLOCKS, (unsigned long) n4kblocks) < 0)
+        perror_fatal("ioctl NBD_SET_SIZE_BLOCKS");
+    if(ioctl(ofd, NBD_SET_BLKSIZE, blocksize) < 0)
+        perror_fatal("ioctl NBD_SET_BLKSIZE");
+
+    if(ioctl(ofd, NBD_CLEAR_SOCK) < 0)
+        perror_fatal("ioctl NBD_CLEAR_BLOCK");
+    if(ioctl(ofd, NBD_SET_FLAGS, NBD_FLAG_HAS_FLAGS | NBD_FLAG_READ_ONLY) < 0)
+        perror_fatal("ioctl NBD_SET_FLAGS");
+
+    int read_only = 1;
+    if(ioctl(ofd, BLKROSET, (unsigned long)&read_only) < 0)
+        perror_fatal("ioctl BLKROSET");
+
+    int sv[2];
+    if(socketpair(AF_LOCAL, SOCK_STREAM, 0, sv) < 0)
+        perror_fatal("socketpair");
+
+    if(ioctl(ofd, NBD_SET_SOCK, sv[0]) < 0)
+        perror_fatal("ioctl NBD_SET_SOCK");
+
+    int pid = fork();
+    if(pid < 0) perror_fatal("fork");
+
+    if(pid > 0) {
+        close(sv[1]);
+        // parent
+        // need to do like in nbd-client to cause partition table read?
+        if(ioctl(ofd, NBD_DO_IT) < 0) perror_fatal("ioctl NBD_DO_IT");
+    } else {
+        close(sv[0]);
+        close(ofd);
+        serve_nbd(sv[1], ifd, blocksize);
+    }
+
+    return 0;
+}
+
+int is_nbd(int ofd) {
+    return ioctl(ofd, NBD_SET_SIZE, 4096UL) == 0;
+}
+#else
+int setup_nbd(int ifd, int ofd) {
+    fatal("not on this platform");
+}
+
+int is_nbd(int ofd) {
+    return 0;
+}
+#endif
+
 int main(int argc, char **argv) {
     test_eli_crypto_hmac();
 
@@ -277,7 +419,7 @@ int main(int argc, char **argv) {
         case 'o': offset = strtoull(optarg, NULL, 0); break;
         case 'n': nblocks = strtoull(optarg, NULL, 0); break;
         case 'b': blocksize = atoi(optarg); break;
-        case 'm': set_mkey(optarg);
+        case 'm': set_mkey(optarg); break;
         }
     }
 
@@ -291,6 +433,10 @@ int main(int argc, char **argv) {
     if(argc > 2 && strcmp(argv[2], "-")) {
         ofd = open(argv[2], O_WRONLY | O_CREAT, 0666);
         if(ofd < 0) perror_fatal("open(outut)");
+    }
+
+    if(is_nbd(ofd)) {
+        return setup_nbd(ifd, ofd, blocksize);
     }
 
     if(offset)
