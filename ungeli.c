@@ -71,15 +71,20 @@ hexcharvalue(char c) {
     return 0;
 }
 
-static void bintohex(char *dst, const unsigned char *arg, size_t sz)
+#if 0
+static const char *
+bintohex(char *dst, const unsigned char *arg, size_t sz)
 {
-    static char hexletters[16] = "0123456789ABCDEF";
+    char *result = dst;
+    static char hexletters[16] = "0123456789abcdef";
     for(int i=0; i<sz; i++) {
         *dst++ = hexletters[arg[i] >> 4];
-        *dst++ = hexletters[arg[i] & 7];
+        *dst++ = hexletters[arg[i] & 0xf];
     }
     *dst = 0;
+    return result;
 }
+#endif
 
 static void hextobin(unsigned char *buf, size_t sz, const char *arg)
 {
@@ -247,12 +252,6 @@ void test_eli_crypto_hmac() {
 
     eli_crypto_hmac((unsigned char*) "\1", 1, (unsigned char*) "bluemoon", 8, result, 0);
     
-    char hexresult[2*SHA512_MDLEN+1];
-    bintohex(hexresult, result, SHA512_MDLEN);
-    fprintf(stderr, "A: %s\n", hexresult);
-    bintohex(hexresult, xresult, SHA512_MDLEN);
-    fprintf(stderr, "X: %s\n", hexresult);
-
     if(memcmp(result, xresult, sizeof(xresult))) {
         fatal("test_eli_crypto_hmac()");
     }
@@ -335,7 +334,6 @@ void serve_nbd(int sock, int ifd, int blocksize) {
             fatalf("Un-handled request %d", command);
 
         memcpy(reply.handle, request.handle, sizeof(reply.handle));
-        fprintf(stderr, "read %zd @ %lld\n", len, request.from);
         write_full(sock, (unsigned char*)&reply, sizeof(reply));
         size_t currlen = len;
         if(currlen > BUFSIZE - sizeof(struct nbd_reply))
