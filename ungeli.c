@@ -275,7 +275,7 @@ void eli_decrypt_range(int ifd, unsigned char *ob, uint64_t byteoffset, uint64_t
     EVP_DecryptUpdate(&ctx, ob, &out_len, ib, count);
     EVP_DecryptFinal_ex(&ctx, ob+out_len, &final_out_len);
     EVP_CIPHER_CTX_cleanup(&ctx);
-    if((out_len + final_out_len) != count) fatal("EVP final_out_len");
+    if(out_len + final_out_len != count) fatalf("eli_decrypt_range EVP final_out_len %d != %d+%d", count, out_len, final_out_len);
 }
 
 #ifdef __linux__
