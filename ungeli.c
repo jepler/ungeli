@@ -67,9 +67,6 @@
 #define ELI_DATAIVKEYLEN (ELI_DATAKEYLEN + ELI_IVKEYLEN)
 #define ELI_MKEYLEN (ELI_DATAIVKEYLEN + SHA512_MDLEN)
 
-static unsigned blocksize = 4096;
-static unsigned long long offset = 0;
-static unsigned long long nblocks = 1;
 static unsigned char mkey[192];
 
 static int
@@ -215,7 +212,8 @@ eli_crypto_ctx_init(eli_crypto_ctx *ctx,
     unsigned char key[128], k_ipad[128];
     memset(key, 0, sizeof(key));
     if(hkeysz <= 128) {
-        memcpy(key, hkey, hkeysz);
+        if(hkeysz != 0)
+            memcpy(key, hkey, hkeysz);
     } else {
         SHA512(hkey, hkeysz, key);
     }
@@ -280,10 +278,10 @@ void test_eli_crypto_hmac() {
     }
 }
 
-void eli_decrypt_range(int ifd, unsigned char *ob, uint64_t byteoffset, uint64_t count)
+void eli_decrypt_range(int ifd, unsigned char *ob, uint64_t byteoffset, uint64_t count, int blocksize)
 {
     unsigned char bkey[ELI_MAXKEYLEN];
-    eli_key_fill(mkey, (byteoffset >> ELI_KEY_SHIFT)/ blocksize, bkey);
+    eli_key_fill(mkey, (byteoffset >> ELI_KEY_SHIFT) / blocksize, bkey);
 
     unsigned char biv[IVSIZE];
     xtr_ivgen(biv, byteoffset);
@@ -327,7 +325,7 @@ void eli_decrypt_range_ex(int ifd, unsigned char *buf, uint64_t offset,
 
     while(sz) {
         lseek(ifd, offset, 0);
-        eli_decrypt_range(ifd, buf, offset, blocksize);
+        eli_decrypt_range(ifd, buf, offset, blocksize, blocksize);
         sz -= blocksize;
         buf += blocksize;
         offset += blocksize;
@@ -508,7 +506,6 @@ eli_read_metadata(int fd, eli_metadata *md) {
     memcpy(md->md_mkeys, ptr, sizeof(md->md_mkeys));
         ptr += sizeof(md->md_mkeys);
     memcpy(md->md_hash, ptr, sizeof(md->md_hash));
-        ptr += sizeof(md->md_hash);
 
     eli_verify_metadata(buf, md->md_hash);
 }
@@ -626,6 +623,10 @@ set_mkey_from_passfile(const char *arg, eli_metadata *md) {
 }
 
 int main(int argc, char **argv) {
+    unsigned blocksize = 4096;
+    unsigned long long offset = 0;
+    unsigned long long nblocks = 1;
+
     char *passphrase_file = NULL;
 
     test_eli_crypto_hmac();
@@ -660,6 +661,9 @@ int main(int argc, char **argv) {
     eli_metadata md;
     eli_read_metadata(ifd, &md);
 
+    if(!blocksize)
+        fatal("Blocksize must not be zero");
+
     if(passphrase_file)
         set_mkey_from_passfile(passphrase_file, &md);
 
@@ -680,7 +684,7 @@ int main(int argc, char **argv) {
         uint64_t blockoffset = offset + i;
         uint64_t byteoffset = blockoffset * blocksize;
 
-        eli_decrypt_range(ifd, ob, byteoffset, blocksize);
+        eli_decrypt_range(ifd, ob, byteoffset, blocksize, blocksize);
 
         write_full(ofd, ob, blocksize);
     }
