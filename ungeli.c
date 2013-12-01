@@ -433,9 +433,15 @@ int main(int argc, char **argv) {
         if(ofd < 0) perror_fatal("open(outut)");
     }
 
+    if(isatty(ifd))
+        fatal("refusing to read from a terminal (use cat | if you insist)");
+
     if(is_nbd(ofd)) {
         return setup_nbd(ifd, ofd, blocksize);
     }
+
+    if(isatty(ofd))
+        fatal("refusing to write to a terminal (use | cat if you insist)");
 
     if(offset)
         if(lseek(ifd, offset*blocksize, SEEK_SET) < 0)
