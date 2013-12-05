@@ -26,12 +26,11 @@ blocksize 4096 has been tested, and files less than 2^20 blocks
 ## Usage
 
 The volumes I've tested this on so far are created with nearly-default
-parameters:
+parameters on FreeBSD 9 (metadata version 6):
     geli init -s 4096 -J geli-password block-device
 which gives AES-128-XTR encryption and no authentication.  This is
 probably the only type of volume that will work.
-Now you can decrypt with ungeli (specify the whole key, the "..."
-notation above and below is not magic):
+Now you can decrypt with ungeli:
 
     $ make
     $ ./ungeli -j geli-password -n 2 geli-test
