@@ -369,6 +369,8 @@ void serve_nbd(int sock, int ifd, int blocksize) {
 }
 
 int setup_nbd(int ifd, int ofd, int blocksize) {
+    // valgrind 3.8.1 reports "unhandled ioctl with no size/direction hints"
+    // and similar for NBD ioctls.  These can safely(?) be ignored.
     if(ioctl(ofd, NBD_SET_SIZE, (unsigned long)blocksize) < 0)
         perror_fatal("ioctl NBD_SET_SIZE");
     uint64_t wholesize = filesize(ifd);
@@ -417,6 +419,8 @@ int setup_nbd(int ifd, int ofd, int blocksize) {
 }
 
 int is_nbd(int ofd) {
+    // valgrind 3.8.1 reports "unhandled ioctl with no size/direction hints"
+    // and similar for NBD ioctls.  These can safely(?) be ignored.
     return ioctl(ofd, NBD_SET_SIZE, 4096UL) == 0;
 }
 #else
@@ -583,6 +587,10 @@ eli_mkey_verify(unsigned char *tmpmkey, unsigned char *key) {
     eli_crypto_hmac(key, ELI_USERKEYLEN, (unsigned char*)"\0", 1, hmkey, sizeof(hmkey));
     eli_crypto_hmac(hmkey, sizeof(hmkey), tmpmkey, ELI_DATAIVKEYLEN, chmac, sizeof(chmac));
 
+    // valgrind 3.8.1 reports "Conditional jump or move depends on
+    // uninitialized value(s)".  Instrumenting indicates that there are
+    // uninitialized bytes in the local variable 'chmac' but as the software
+    // works I am inclined to believe this is a spurious diagnotsic.
     int result = !memcmp(chmac, odhmac, sizeof(chmac));
     if(!result) fprintf(stderr, "Note: Failed key verification (this is not fatal on its own)\n");
     return result;
@@ -664,6 +672,7 @@ int main(int argc, char **argv) {
     if(!blocksize)
         fatal("Blocksize must not be zero");
 
+
     if(passphrase_file)
         set_mkey_from_passfile(passphrase_file, &md);
 
@@ -686,6 +695,11 @@ int main(int argc, char **argv) {
 
         eli_decrypt_range(ifd, ob, byteoffset, blocksize, blocksize);
 
+        // valgrind 3.8.1 reports "Syscall param write(buf) points to
+        // uninitialised byte(s)".  Zeroing ob[] before eli_decrypt_range
+        // does not make the diagnostic go away.  Since decrypted blocks
+        // are actually correct, I am inclined to believe this is a spurious
+        // diagnostic.
         write_full(ofd, ob, blocksize);
     }
     return 0;
