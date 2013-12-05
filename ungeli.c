@@ -672,6 +672,8 @@ int main(int argc, char **argv) {
     if(!blocksize)
         fatal("Blocksize must not be zero");
 
+    if(md.md_version != 6)
+        fatalf("Unsupported version %d", md.md_version);
 
     if(passphrase_file)
         set_mkey_from_passfile(passphrase_file, &md);
