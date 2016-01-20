@@ -630,24 +630,55 @@ set_mkey_from_passfile(const char *arg, eli_metadata *md) {
     fatal("Failed to decryt master key");
 }
 
+static void
+set_mkey_from_keyfile(const char *arg, eli_metadata *md) {
+    FILE *s = fopen(arg, "r");
+    unsigned char buf[ELI_USERKEYLEN];
+    if(!s) perror_fatal("fopen keyfile");
+    if (!fread(buf, sizeof(buf), 1, s)) perror_fatal("fread keyfile");
+    fclose(s);
+
+    unsigned char key[SHA512_MDLEN];
+    eli_crypto_hmac(0, 0, buf, sizeof(buf), key, sizeof(key));
+
+    unsigned char enckey[SHA512_MDLEN];
+    eli_crypto_hmac(key, sizeof(key), (unsigned char*)"\1", 1, enckey, sizeof(enckey));
+
+    for(int nkey=0; nkey<ELI_MAXMKEYS; nkey++) {
+        int moff = nkey * ELI_MKEYLEN;
+        int bit = (1<<nkey);
+        if(!(md->md_keys & bit)) continue;
+        unsigned char tmpmkey[ELI_MKEYLEN];
+        eli_crypto_decrypt(md->md_ealgo, enckey, md->md_keylen/8,
+            md->md_mkeys + moff, ELI_MKEYLEN, tmpmkey);
+
+        if(!eli_mkey_verify(tmpmkey, key)) continue;
+        memcpy(mkey, tmpmkey, sizeof(mkey));
+        return;
+    }
+    fatal("Failed to decryt master key");
+}
+
 int main(int argc, char **argv) {
     unsigned blocksize = 4096;
     unsigned long long offset = 0;
     unsigned long long nblocks = 1;
 
     char *passphrase_file = NULL;
+    char *key_file = NULL;
 
     test_eli_crypto_hmac();
     test_eli_pkcs5v2();
 
     int opt;
-    while((opt = getopt(argc, argv, "o:n:b:m:j:")) != -1) {
+    while((opt = getopt(argc, argv, "o:n:b:m:j:k:")) != -1) {
         switch(opt) {
         case 'o': offset = strtoull(optarg, NULL, 0); break;
         case 'n': nblocks = strtoull(optarg, NULL, 0); break;
         case 'b': blocksize = atoi(optarg); break;
         case 'm': set_mkey(optarg); break;
-        case 'j': passphrase_file = optarg;
+        case 'j': passphrase_file = optarg; break;
+        case 'k': key_file = optarg; break;
         }
     }
 
@@ -677,6 +708,9 @@ int main(int argc, char **argv) {
 
     if(passphrase_file)
         set_mkey_from_passfile(passphrase_file, &md);
+
+    if(key_file)
+        set_mkey_from_keyfile(key_file, &md);
 
     if(is_nbd(ofd)) {
         return setup_nbd(ifd, ofd, blocksize);
