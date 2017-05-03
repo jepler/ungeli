@@ -1,6 +1,6 @@
 # ungeli
 
-I recently started using geli-encrypted devices for offsite backups.
+I use geli-encrypted devices for offsite backups.
 However, I worry that in the event of a disaster I'm more likely to
 have a Linux machine on hand than a (k)FreeBSD machine, so I'd like
 to be able to read my backups.
@@ -14,6 +14,12 @@ volume that uses a password and no keyfiles.  This is the only
 supported cipher type, and authentication is not supported.  Only
 blocksize 4096 has been tested, and files less than 2^20 blocks
 (requiring multiple keys) also have not been tested.
+
+# Development status
+
+The author (@jepler) is not actively using or developing this project.
+Issues and pull requests are not likely to be acted on.
+I would be interested in passing this project to a new maintainer.
 
 ## Requirements
 
