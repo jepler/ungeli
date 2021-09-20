@@ -289,13 +289,12 @@ void eli_decrypt_range(int ifd, unsigned char *ob, uint64_t byteoffset, uint64_t
     unsigned char ib[count];
     read_full(ifd, ib, count);
 
-    EVP_CIPHER_CTX ctx;
-    EVP_CIPHER_CTX_init(&ctx);
-    EVP_DecryptInit_ex(&ctx, EVP_aes_128_xts(), NULL, bkey, biv);
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_128_xts(), NULL, bkey, biv);
     int out_len, final_out_len;
-    EVP_DecryptUpdate(&ctx, ob, &out_len, ib, count);
-    EVP_DecryptFinal_ex(&ctx, ob+out_len, &final_out_len);
-    EVP_CIPHER_CTX_cleanup(&ctx);
+    EVP_DecryptUpdate(ctx, ob, &out_len, ib, count);
+    EVP_DecryptFinal_ex(ctx, ob+out_len, &final_out_len);
+    EVP_CIPHER_CTX_free(ctx);
     if(out_len + final_out_len != count) fatalf("eli_decrypt_range EVP final_out_len %d != %d+%d", count, out_len, final_out_len);
 }
 
@@ -521,14 +520,13 @@ eli_crypto_decrypt(int ealgo, unsigned char *enckey, size_t keylen,
     if(ealgo != CRYPTO_AES_XTS) fatal("unsupported ealgo");
     if(keylen != 16) fatal("unsupported key length");
 
-    EVP_CIPHER_CTX ctx;
-    EVP_CIPHER_CTX_init(&ctx);
-    EVP_DecryptInit_ex(&ctx, EVP_aes_128_cbc(), NULL, enckey, 0);
-    EVP_CIPHER_CTX_set_padding(&ctx, 0);
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, enckey, 0);
+    EVP_CIPHER_CTX_set_padding(ctx, 0);
     int out_len, final_out_len;
-    EVP_DecryptUpdate(&ctx, dest, &out_len, src, len);
-    EVP_DecryptFinal_ex(&ctx, dest+out_len, &final_out_len);
-    EVP_CIPHER_CTX_cleanup(&ctx);
+    EVP_DecryptUpdate(ctx, dest, &out_len, src, len);
+    EVP_DecryptFinal_ex(ctx, dest+out_len, &final_out_len);
+    EVP_CIPHER_CTX_free(ctx);
     if(out_len + final_out_len != len) fatalf("eli_crypto_decrypt EVP final_out_len %d != %d+%d", len, out_len, final_out_len);
 }
 

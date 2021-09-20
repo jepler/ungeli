@@ -1,7 +1,7 @@
 # ungeli
 
-I use geli-encrypted devices for offsite backups.
-However, I worry that in the event of a disaster I'm more likely to
+I used to use geli-encrypted devices for offsite backups.
+However, I worried that in the event of a disaster I'm more likely to
 have a Linux machine on hand than a (k)FreeBSD machine, so I'd like
 to be able to read my backups.
 
@@ -24,7 +24,7 @@ I would be interested in passing this project to a new maintainer.
 ## Requirements
 
  * Gnu99-compatible C compiler (tested with gcc 4.8)
- * OpenSSL (recent version required for AES-128-XTS) (tested with 1.0.1e)
+ * OpenSSL (tested with 1.1.1k)
  * Optional: Linux (for network block device support)
 
  [pc]: https://www.dlitz.net/software/pycrypto/
